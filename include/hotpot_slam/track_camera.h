@@ -10,6 +10,7 @@
 #include <pcl/point_types.h>
 #include "rgbd_frame.h"
 #include "worldmap.h"
+#include "common_headers.h"
 
 using namespace std;
 using namespace cv;
@@ -93,10 +94,30 @@ public:
 		// (2) track the last frame, get the key points
 		// (3) update the last frame, renew the image, keypoints, kps_3d, descriptor
 		// only renew the data before optimizing matching !!!
+		cv::Mat R, T;
 		cout << "_keyframes.size(): " << _keyframes.size() << endl;
-		int res = trackRGBPoint(frame_cur, _keyframes[0], _Rvector, _Tvector);
+		double score = 0;
+		int frames_count = 0;
+		for (int i = _keyframes.size()-1; i >= 0; i-=_keyframes.size()/3.5) {
+			frames_count++;
+			double s = trackRGBPoint(frame_cur, _keyframes[i], R, T);
+			if (s > 0.5) {
+				score = s;
+				break;
+			}
 
-		return res;
+			if (s > score) {
+				score = s;
+			}
+			if (frames_count > 5) 
+				break;
+		}
+
+		R.copyTo(_Rvector);
+		T.copyTo(_Tvector);
+		std::cout << "trackIter done." << std::endl;
+
+		return score;
 	}
 
 	/// track the camera from the new coming picture to the reference frame (given key points, 3d point positions and ORB descriptor)
@@ -108,7 +129,7 @@ public:
 		          const cv::Mat& img_color_cur,
 				  cv::Mat& R, cv::Mat& T)
 				  */
-	int trackRGBPoint(CRGBDFrame& frame_cur, const CRGBDFrame& frame_lst, cv::Mat& R, cv::Mat& T)
+	int trackRGBPoint(CRGBDFrame& frame_cur, const CRGBDFrame& frame_lst, cv::Mat& Rvector, cv::Mat& Tvector)
 	{
 		/* old step zero, not for frame type input
 		// 0. extract the train/reference/last frame to grayscale and smooth it. Only for displayment.
@@ -150,7 +171,7 @@ public:
 		//	  we will have several filters. 1st from score, 2nd from fake optical flow
 		//    Here we will compute a fake optical flow and abort all the points which does not match the flow
   		std::vector<cv::DMatch> good_matches;
-  		int threshold = 32;
+  		int threshold = 48;
 
   		// select good score matching
   		std::vector<cv::DMatch> before_matches = matches;
@@ -205,13 +226,13 @@ public:
 			return -3;
 
 		// rectify the rotation angle and translate to match the camera coordinate
-		rvector.copyTo(_Rvector);
-		tvector.copyTo(_Tvector);
+		rvector.copyTo(Rvector);
+		tvector.copyTo(Tvector);
 
-		std::cout << "_Rvector:\n" << _Rvector << std::endl;
-		std::cout << "_Tvector:\n" << _Tvector << std::endl;
+		std::cout << "Rvector:\n" << Rvector << std::endl;
+		std::cout << "Tvector:\n" << Tvector << std::endl;
 
-		/*
+		
 
 		// check if the frame should be inserted to the waiting queue.
 		if (ifInsertCurrentFrameToQueue(kps_lst, good_matches)) {
@@ -232,8 +253,9 @@ public:
 
 			_frames_list.clear();
 		}
-		*/
 
+		double score = float(inliers.rows) / kps_lst.size();
+		std::cout << "final Score: " << std::endl << "     " << score << std::endl;
 	    return 0;
 	}
 
@@ -304,7 +326,7 @@ public:
 	    	}
 	    }
 
-	    int threshold = 32;
+	    int threshold = 16;
 	    std::vector<cv::DMatch> good_new_matches;
 	    for (int i = 0; i < new_matches.size(); i++) {
 	    	if (new_matches[i].distance < threshold) {
@@ -358,6 +380,8 @@ public:
   			f1._descriptor.row(f1._matches_to_ref[i].queryIdx).copyTo(dscp_new.row(ct));
   			ct++;
   		}
+
+  		/*
   		// insert new triangulated key points
   		for (int i = 0; i < points_get_matches.size(); i++) {
   			kps_new.push_back(f1._keypoints[points_get_matches[i].queryIdx]);
@@ -365,10 +389,12 @@ public:
   			f1._descriptor.row(points_get_matches[i].queryIdx).copyTo(dscp_new.row(ct));
   			ct++;
   		}
+		*/
 
   		new_key_frame._keypoints = kps_new;
   		new_key_frame._pts_3d = pts_new;
   		dscp_new.copyTo(new_key_frame._descriptor);
+  		
 
   		return new_key_frame;
 	}
@@ -464,36 +490,6 @@ public:
 		image_show.release();
 	}
 
-	cv::Mat eulerAnglesToRotationMatrix(double x, double y, double z, cv::Mat& R)
-	{
-	    // Calculate rotation about x axis
-	    cv::Mat R_x = (Mat_<double>(3,3) <<
-	               1,       0,              0,
-	               0,       cos(x),   -sin(x),
-	               0,       sin(x),   cos(x)
-	               );
-	     
-	    // Calculate rotation about y axis
-	    cv::Mat R_y = (Mat_<double>(3,3) <<
-	               cos(y),    0,      sin(y),
-	               0,               1,      0,
-	               -sin(y),   0,      cos(y)
-	               );
-	     
-	    // Calculate rotation about z axis
-	    cv::Mat R_z = (Mat_<double>(3,3) <<
-	               cos(z),    -sin(z),      0,
-	               sin(z),    cos(z),       0,
-	               0,               0,                  1);
-	     
-	     
-	    // Combined rotation matrix
-	    cv::Mat Rm = R_z * R_y * R_x;
-	    Rm.copyTo(R);
-	    return R;
-	 
-	}
-
 	std::vector<double> computeReProjectionError(const std::vector<cv::Point2d>& pn0, const std::vector<cv::Point2d>& pn1, 
   							 const cv::Mat& K, const cv::Mat& r0, const cv::Mat& t0, const cv::Mat& r1, const cv::Mat& t1, 
   		                     std::vector<cv::Point3d> pointcloud)
@@ -519,6 +515,36 @@ public:
 		}
 
 		return res;
+	}
+
+	cv::Mat eulerAnglesToRotationMatrix(double x, double y, double z, cv::Mat& R)
+	{
+	    // Calculate rotation about x axis
+	    cv::Mat R_x = (Mat_<double>(3,3) <<
+	               1,       0,              0,
+	               0,       cos(x),   -sin(x),
+	               0,       sin(x),   cos(x)
+	               );
+	     
+	    // Calculate rotation about y axis
+	    cv::Mat R_y = (Mat_<double>(3,3) <<
+	               cos(y),    0,      sin(y),
+	               0,               1,      0,
+	               -sin(y),   0,      cos(y)
+	               );
+	     
+	    // Calculate rotation about z axis
+	    cv::Mat R_z = (Mat_<double>(3,3) <<
+	               cos(z),    -sin(z),      0,
+	               sin(z),    cos(z),       0,
+	               0,               0,                  1);
+		     
+		     
+	    // Combined rotation matrix
+	    cv::Mat Rm = R_z * R_y * R_x;
+	    Rm.copyTo(R);
+	    return R;
+		 
 	}
 };
 
