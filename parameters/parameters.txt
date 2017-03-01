@@ -1,0 +1,66 @@
+start_index=1
+end_index=-1
+
+# data directory
+data_source=/home/xiang/Documents/data/rgbd_dataset_freiburg2_pioneer_slam2/
+#data_source=/home/xiang/Documents/data/rgbd_dataset_freiburg1_room/
+data_source=/home/xiang/Documents/data/rgbd_dataset_freiburg3_long_office_household/
+rgb_dir=rgb/
+rgb_extension=.png
+depth_dir=depth/
+depth_extension=.png
+
+# rgb camera parameters
+rgb_camera.cx=320.1
+rgb_camera.cy=247.6
+rgb_camera.fx=535.4
+rgb_camera.fy=539.2
+rgb_camera.d0=0.2312
+rgb_camera.d1=-0.7849
+rgb_camera.d2=-0.0033
+rgb_camera.d3=-0.0001
+rgb_camera.d4=0.9172
+
+#depth camera parameters
+depth_camera.cx=251.6
+depth_camera.cy=212.6
+depth_camera.fx=369.1
+depth_camera.fy=271.1
+depth_camera.d0=0.0907
+depth_camera.d1=-0.0285
+depth_camera.d2=-0.0004
+depth_camera.d3=-0.0057
+depth_camera.d4=0.0000
+depth_camera.scale=5000.0
+
+# ORB parameters
+orb_features=600
+orb_scale=1.2
+orb_levels=4
+orb_iniThFAST=20
+orb_minThFAST=8
+knn_match_ratio=0.8
+
+# PnP parameters
+pnp_min_inliers=10
+pnp_min_matches=15
+
+# Tracker parameters
+tracker_max_lost_frame=10
+tracker_ref_frames=5
+
+# pose graph
+nearby_keyframes=5
+keyframe_min_translation=0.25
+keyframe_min_rotation=0.25
+loop_accumulate_error=4.0
+local_accumulate_error=1.0
+
+# Looper parameters
+looper_vocab_file=./vocab/ORBvoc.txt
+looper_min_sim_score=0.015
+looper_min_interval=60
+
+# Mapper parameters
+mapper_resolution=0.04
+mapper_max_distance=5.0
