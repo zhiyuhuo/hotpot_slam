@@ -20,6 +20,8 @@
 using namespace std;
 using namespace cv;
 
+class CMap;
+class CMapPoint;
 class CRGBDFrame
 {
 public:
@@ -31,45 +33,36 @@ public:
 
 	/// input data
 	cv::Mat _img_rgb;
-	cv::Mat _img_depth;
-	cv::Mat _img_color;
 	std::vector<float> _vpoints;
 
 	/// frame feature data
 	/// Keypoints + 3D position (this will be obtained using triangulate, only calculated if the frame become a KEY frame)
 	/// + ORB feature (these data will be filled if the frame does not is to be the key frame)
-	std::vector<cv::KeyPoint> _keypoints;
-	std::vector<cv::Point3d> _pts_3d;
-	cv::Mat _descriptor;
+	std::vector<cv::KeyPoint> _kps;
+	std::vector<cv::Point3d> _p3d;
+	cv::Mat _dscp;
 
 	/// camera pose 
 	cv::Mat _Rvector;
 	cv::Mat _Tvector;
 
-	/// the last matches to the recent reference frame (this will be a temperal member and will not work when the frame becomes a key frame)
+	/// the last matches to the recent reference frame 
+	/// (this will be a temperal member and will not work when the frame becomes a key frame)
 	std::vector<DMatch> _matches_to_ref;
 
 	/// bobw data. TODO. this is for relocalization and global optimization. 
-	//DBoW2::Bowstd::vector bowVec;
+	DBoW2::BowVector bowVec;
 
-
+	// a pointer to the parent map. When the frame is deleted, the map will know.
+	CMap* _parent_map;
+	// pointers to world points linked
+	std::map<int, CMapPoint*> _linked_points;
 
 public:
 	CRGBDFrame()
 	{
 		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
 		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
-	}
-
-	CRGBDFrame(CParameterReader parameter_reader, cv::Mat img_rgb, cv::Mat img_depth)
-	{
-		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
-		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
-
-		_parameter_reader = parameter_reader;
-		_img_rgb = img_rgb.clone();
-		_img_depth = img_depth.clone();
-		//_pointcloud = pointcloud;
 	}
 
 	CRGBDFrame(CParameterReader parameter_reader, cv::Mat img_rgb, std::vector<float> vpoints)
@@ -79,18 +72,16 @@ public:
 		_vpoints = vpoints;
 	}
 
-	CRGBDFrame(CParameterReader parameter_reader, cv::Mat img_rgb, std::vector<cv::KeyPoint> keypoints, std::vector<cv::Point3d> _pts_3d, cv::Mat descriptor) {
+	CRGBDFrame(CParameterReader parameter_reader, cv::Mat img_rgb, std::vector<cv::KeyPoint> kps, std::vector<cv::Point3d> p3d, cv::Mat dscp) {
 		img_rgb.copyTo(_img_rgb);
-		_keypoints = keypoints;
-		_pts_3d = _pts_3d;
-		descriptor.copyTo(_descriptor);
+		_kps = kps;
+		_p3d = p3d;
+		dscp.copyTo(_dscp);
 	}
 
 	~CRGBDFrame()
 	{
 		_img_rgb.release();
-		_img_rgb.release();
-		_img_color.release();
 	}
 
 	void setFrameID(int id) 
@@ -100,16 +91,16 @@ public:
 
 	void updateFrameFeatureData(std::vector<cv::KeyPoint> kps, cv::Mat dscp)
 	{
-		_keypoints = kps;
-		_descriptor = dscp.clone();
+		_kps = kps;
+		_dscp = dscp.clone();
 	}
 
-	void updateFrameFeatureData(cv::Mat img_rgb, std::vector<cv::KeyPoint> kps, std::vector<cv::Point3d> pts_3d, cv::Mat dscp)
+	void updateFrameFeatureData(cv::Mat img_rgb, std::vector<cv::KeyPoint> kps, std::vector<cv::Point3d> p3d, cv::Mat dscp)
 	{
 		img_rgb.copyTo(_img_rgb);
-		_keypoints = kps;
-		_pts_3d = pts_3d;
-		_descriptor = dscp.clone();
+		_kps = kps;
+		_p3d = p3d;
+		_dscp = dscp.clone();
 	}
 
 };

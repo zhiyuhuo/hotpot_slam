@@ -25,9 +25,9 @@ public: // camera parameter and add-in frames
 public: // first key frame and first group of map points. The camera is at [I 0] for the first frame.
 	CRGBDFrame _first_key_frame;
 
-	std::vector<cv::KeyPoint> _keypoints;
-	std::vector<cv::Point3d> _mappoints;
-	std::vector<cv::Mat> _descriptors;
+	std::vector<cv::KeyPoint> _kps;
+	std::vector<cv::Point3d> _p3d;
+	std::vector<cv::Mat> _dscp;
 
 public:
 	CInitializer(){
@@ -60,23 +60,6 @@ public:
 		_frames.push_back(frame);
 	}
 
-	// update map
-	int updateWorldMap(CMap* worldmap)
-	{
-		int frameID = worldmap->_count_frame;
-		worldmap->addKeyFrame(_first_key_frame);
-		for (int i = 0; i < _first_key_frame._keypoints.size(); i++) {
-			CMapPoint mpt = CMapPoint();
-			Mat dscp = _first_key_frame._descriptor.row(i);
-			mpt.addNewObservation(frameID, 
-								  _first_key_frame._keypoints[i], 
-								  _first_key_frame._pts_3d[i], 
-								  dscp,
-								  1.0);
-			worldmap->addMapPoint(mpt);
-		}
-	}
-
 	// start the initialization work after read enough data
 	int initialize()
 	{
@@ -85,9 +68,9 @@ public:
 		initializeFromOneFramebyRGBPoints(_first_key_frame);
 
 		std::cout << "result of init: " 
-					<< _first_key_frame._keypoints.size() << " " 
-					<< _first_key_frame._pts_3d.size() << " " 
-					<< _first_key_frame._descriptor.size() << endl;
+					<< _first_key_frame._kps.size() << " " 
+					<< _first_key_frame._p3d.size() << " " 
+					<< _first_key_frame._dscp.size() << endl;
 
 		return 0;
 	}
@@ -95,7 +78,11 @@ public:
 	// for RGBD camera
 	int initializeFromOneFramebyRGBPoints(CRGBDFrame& frame)
 	{
-		initializeFromOneFramebyRGBPoints(frame, frame._keypoints, frame._pts_3d, frame._descriptor);
+		initializeFromOneFramebyRGBPoints(frame, frame._kps, frame._p3d, frame._dscp);
+		return 0;
+	}
+
+	int initializeFromTenNeighborFrames(vector<CRGBDFrame> frames) {
 		return 0;
 	}
 
@@ -175,7 +162,7 @@ public:
 		for (it = kps.begin(); it != kps.end(); it++) {
 			int idx = round(it->pt.x) + round(it->pt.y) * img.cols;
 			if (mat_dist.at<float>(round(it->pt.y), round(it->pt.x)) <= 0.5 
-				|| mat_dist.at<float>(round(it->pt.y), round(it->pt.x)) > 5.0
+				|| mat_dist.at<float>(round(it->pt.y), round(it->pt.x)) > 7.5
 				|| xyz_in_rgb[idx].z <= 0) {
 				kps.erase(it);
 				it--;
@@ -209,6 +196,15 @@ public:
 	    orb.compute(img, kps, dscp);
 	    dscp.copyTo(descriptors);
 		return 0;
+	}
+
+	int buildInitialMapPointsFromInitialKeyFrame(CMap& map)
+	{
+		for (int i = 0; i < _first_key_frame._p3d.size(); i++) {
+			CMapPoint pt(_first_key_frame._p3d[i], _first_key_frame._dscp.row(i));
+			map.addMapPoint(pt);
+		}
+
 	}
 
 	// for Mono camera TO DO

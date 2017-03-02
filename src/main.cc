@@ -34,7 +34,7 @@ void depthCallback(const sensor_msgs::ImageConstPtr& msg);
 void pointsCallback(const sensor_msgs::PointCloud2::ConstPtr& msg);
 void broadcastTF();
 void editPointCloudMsg(std::vector<Point3d> pts, sensor_msgs::PointCloud& msg);
-void editMarkerMsg(cv::Mat r,cv::Mat t, visualization_msgs::Marker& marker);
+void editMarkerMsg(cv::Mat r,cv::Mat t, visualization_msgs::Marker& marker, bool iftrack);
 std::vector<double> rotationMatrixToQuanterion(Mat r);
 std::vector<double> eulerToQuaternion(double pitch, double roll, double yaw);
 
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
       slam._tracker._Tvector.copyTo(Tvector);
 
       // publish camera pose
-      editMarkerMsg(Rvector, Tvector, msg_marker);
+      editMarkerMsg(Rvector, Tvector, msg_marker, slam._iftracking);
       while (marker_pub.getNumSubscribers() < 1)
       {
         if (!ros::ok())
@@ -121,9 +121,7 @@ int main(int argc, char **argv)
 
       // publish worldmap points
       broadcastTF();
-      if (slam._tracker._keyframes.size() <= 0)
-        continue;
-      editPointCloudMsg(slam._tracker._keyframes.back()._pts_3d, msg_pointcloud);
+      editPointCloudMsg(slam._first_key_frame._p3d, msg_pointcloud);
       pub_pc.publish(msg_pointcloud);
       id_pc++;
 
@@ -205,7 +203,7 @@ void editPointCloudMsg(std::vector<Point3d> pts, sensor_msgs::PointCloud& msg)
 
 }
 
-void editMarkerMsg(cv::Mat r,cv::Mat t, visualization_msgs::Marker& marker)
+void editMarkerMsg(cv::Mat r,cv::Mat t, visualization_msgs::Marker& marker, bool iftrack)
 {
   // Set the frame ID and timestamp.  See the TF tutorials for information on these.
     marker.header.frame_id = "/points_frame";
@@ -245,6 +243,11 @@ void editMarkerMsg(cv::Mat r,cv::Mat t, visualization_msgs::Marker& marker)
     marker.color.g = 1.0f;
     marker.color.b = 0.0f;
     marker.color.a = 1.0;
+
+    if (!iftrack) {
+      marker.color.r = 1.0f;
+      marker.color.g = 0.0f;     
+    }
 
     marker.lifetime = ros::Duration();
 

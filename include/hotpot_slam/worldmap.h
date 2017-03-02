@@ -12,7 +12,6 @@
 #include "map_point.h"
 
 class CMapPoint;
-
 // CMap is the only instance that manages all the points and frames.
 class CMap
 {
@@ -58,7 +57,7 @@ public: // functions
 		std::cout << "world map points number: " << std::endl;
 		for (int i = 0; i < _worldpoints.size(); i++) {
 			std::cout << _worldpoints[i]._id << " " << _worldpoints[i]._p3d << " " << _worldpoints[i]._count_obv << std::endl;
-			std::cout << _worldpoints[i]._kp_set[0].pt << _worldpoints[i]._dscp_set[0] << std::endl;
+			std::cout << _worldpoints[i]._dscp << std::endl;
 		}
 	}
 };

@@ -22,52 +22,26 @@ class CMap;
 class CTracker
 {
 public:
-	// camera parameters
 	CCameraPara _rgbcam;
 	CCameraPara _depthcam;
+
 	cv::Mat _Kdepth;
 	cv::Mat _Krgb;
-
-	// tracking results. the rotation and translation vector of the camera
 	cv::Mat _Rvector;
 	cv::Mat _Tvector;
 
-	// two frames of tracking. _frame_cur is the new coming frame and the _frame_lst is the last used frame.
-	CRGBDFrame _frame_ref;
+	std::vector<CRGBDFrame> _keyframes;
+	std::vector<CRGBDFrame> _frames_list;
+	CRGBDFrame _frame_fst;
+	CRGBDFrame _frame_lst;
 	CRGBDFrame _frame_cur;
 
-	// a list of the candidate frames which can to be add to the world map. 
-	vector<CRGBDFrame> _frames;
+	int _count_running;
 
 public:
 	CTracker()
 	{
-		CParameterReader para;
-  		// init rgb camera
-  		_rgbcam = CCameraPara(	para.rgb_camera_width, para.rgb_camera_height,
-  								para.rgb_camera_fx, para.rgb_camera_fy, para.rgb_camera_cx, para.rgb_camera_cy);
-  		double kinect_rgb_camera_intrinsic_para[3][3] =  { { _rgbcam._fx,           0, _rgbcam._cx},
-								  						   {           0, _rgbcam._fy, _rgbcam._cy},
-								  						   {           0,	   	    0,           1} }; 
-  		_Krgb = cv::Mat(3, 3, CV_64F);
-  		for (int i = 0; i < _Krgb.rows; i++)
-  			for (int j = 0; j < _Krgb.cols; j++)
-  				_Krgb.at<double>(i, j) = kinect_rgb_camera_intrinsic_para[i][j];
-
-		// init depth camera
-		_depthcam = CCameraPara(para.depth_camera_width, para.depth_camera_height,
-								para.depth_camera_fx, para.depth_camera_fy, para.depth_camera_cx, para.depth_camera_cy);
-  		double kinect_depth_camera_intrinsic_para[3][3] =  { { _depthcam._fx,              0, _depthcam._cx},
-								  							 {             0,  _depthcam._fy, _depthcam._cy},
-								  							 {             0,		       0,	  	      1} }; 
-  		_Kdepth = cv::Mat(3, 3, CV_64F);
-  		for (int i = 0; i < _Kdepth.rows; i++)
-  			for (int j = 0; j < _Kdepth.cols; j++)
-  				_Kdepth.at<double>(i, j) = kinect_depth_camera_intrinsic_para[i][j];
-
-  		// init R and T 
-  		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
-  		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
+		_count_running = 0;
 	}
 
 	CTracker(CParameterReader para)
@@ -106,38 +80,71 @@ public:
 		_Tvector.release();
 	}
 
-	/// this is a function that track the R,T movement frame by frame and renew the R,T gradually. 
+	int addKeyFrame(const CRGBDFrame& frame) {
+		_keyframes.push_back(frame);
+		return 0;
+	}
+
+/// this is a function that track the R,T movement frame by frame and renew the R,T gradually. 
 	/// The last key frame and the key points, 3d points are updated frame by frame.
-	bool trackIter(CRGBDFrame& frame_cur)
+	int trackIter(CRGBDFrame& frame_cur)
 	{
 		// Steps:
 		// (1) import the current frame (only)
 		// (2) track the last frame, get the key points
 		// (3) update the last frame, renew the image, keypoints, kps_3d, descriptor
 		// only renew the data before optimizing matching !!!
-		double score = trackRGBPoint(frame_cur, _frame_ref, _Rvector, _Tvector);
+		cv::Mat R, T;
+		cout << "_keyframes.size(): " << _keyframes.size() << endl;
+		double score = 0;
+		int frames_count = 0;
+		for (int i = _keyframes.size()-1; i >= 0; i-=_keyframes.size()/3.5) {
+			frames_count++;
+			double s = trackRGBPoint(frame_cur, _keyframes[i], R, T);
+			if (s > 0.5) {
+				score = s;
+				break;
+			}
 
-		if (score < 0)
-			return false;
+			if (s > score) {
+				score = s;
+			}
+			if (frames_count > 5) 
+				break;
+		}
 
-		return true;
-	}
+		R.copyTo(_Rvector);
+		T.copyTo(_Tvector);
+		std::cout << "trackIter done." << std::endl;
 
-	void setReferenceFrame(const CRGBDFrame& frame) {
-		_frame_ref = frame;
+		return score;
 	}
 
 	/// track the camera from the new coming picture to the reference frame (given key points, 3d point positions and ORB descriptor)
 	/// output rotation and translation matrix
 	/// Attention! it looks that the "const cv::Mat& img_color_lst" parameter is useless
-	double trackRGBPoint(CRGBDFrame& frame_cur, const CRGBDFrame& frame_lst, cv::Mat& Rvector, cv::Mat& Tvector)
+	/*
+	int trackRGBPoint(const cv::Mat& img_color_lst,  
+				  const std::vector<cv::KeyPoint>& kps_lst, const std::vector<cv::Point3d>& pt3d_lst, const cv::Mat& dscp_lst,  
+		          const cv::Mat& img_color_cur,
+				  cv::Mat& R, cv::Mat& T)
+				  */
+	int trackRGBPoint(CRGBDFrame& frame_cur, const CRGBDFrame& frame_lst, cv::Mat& Rvector, cv::Mat& Tvector)
 	{
+		/* old step zero, not for frame type input
+		// 0. extract the train/reference/last frame to grayscale and smooth it. Only for displayment.
+		cv::Mat img_gray_lst;
+		cv::cvtColor(img_color_lst, img_gray_lst, CV_BGR2GRAY);
+		cv::Mat img_lst = img_gray_lst;
+		//cv::medianBlur(img_lst, img_lst, 3);
+		*/
+
 		//0. extract the image and key points data from the last/reference frame and the image from the current frame.
 		cv::Mat img_color_cur = frame_cur._img_rgb;
 		cv::Mat img_color_lst = frame_lst._img_rgb;
-		std::vector<KeyPoint> kps_lst = frame_lst._kps;
-		std::vector<cv::Point3d> p3d_lst = frame_lst._p3d;
-		cv::Mat dscp_lst = frame_lst._dscp;
+		std::vector<KeyPoint> kps_lst = frame_lst._keypoints;
+		std::vector<cv::Point3d> pt3d_lst = frame_lst._pts_3d;
+		cv::Mat dscp_lst = frame_lst._descriptor;
 
 		// 1. convert the current/query image to grayscale, smooth it
 		cv::Mat img_gray_cur;
@@ -164,31 +171,36 @@ public:
 		//	  we will have several filters. 1st from score, 2nd from fake optical flow
 		//    Here we will compute a fake optical flow and abort all the points which does not match the flow
   		std::vector<cv::DMatch> good_matches;
-  		int threshold = 32;
-		for( int i = 0; i < matches.size(); i++ ){
-			if( matches[i].distance <= threshold) {
-				good_matches.push_back(matches[i]);
+  		int threshold = 48;
+
+  		// select good score matching
+  		std::vector<cv::DMatch> before_matches = matches;
+  		std::vector<cv::DMatch> after_matches;
+		for( int i = 0; i < before_matches.size(); i++ ){
+			if( before_matches[i].distance <= threshold) {
+				after_matches.push_back(before_matches[i]);
 			}
 		}
 
-		std::cout << "good_matches num: " << good_matches.size() << " " << kps_lst.size() << " " 
-		          << float(good_matches.size()) / float(kps_lst.size()) << std::endl;
+		good_matches = after_matches;
+		std::cout << "good_matches num: " << good_matches.size() << " " << " " << kps_lst.size() << " " << float(good_matches.size()) / float(kps_lst.size()) << std::endl;
 		if (good_matches.size() < 20)
 			return -2;	
 
-		// 5. compute the R,T use solveRansac. Given the 3D points and their projections on the current image
+		// 5. compute the R,T use solveRansac. Given the 3D points and their two projections, the problem becomes a stereo camera calibration problem
+		//    Oh yeah. 
 		//  5.1 get 3D point
-		std::vector<cv::Point3d> p3d;
+		std::vector<cv::Point3d> pt3d;
 		for (int i = 0; i < good_matches.size(); i++) {
-			p3d.push_back(p3d_lst[good_matches[i].trainIdx]);
+			pt3d.push_back(pt3d_lst[good_matches[i].trainIdx]);
 		}
 
-		//  5.2 get two 2d image pixels. we will only use the pixels of the current image
-		std::vector<cv::Point2d> pn_lst;
-		std::vector<cv::Point2d> pn_cur;
-		std::vector<int> idpn_lst;
-		std::vector<int> idpn_cur;
-		keyPointPairsToPointVectorPairs(kps_lst, kps_cur, good_matches, pn_lst, pn_cur, idpn_lst, idpn_cur);
+		//  5.2 get two 2d image pixels
+		std::vector<cv::Point2d> pn0;
+		std::vector<cv::Point2d> pn1;
+		std::vector<int> idpn0;
+		std::vector<int> idpn1;
+		keyPointPairsToPointVectorPairs(kps_lst, kps_cur, good_matches, pn0, pn1, idpn0, idpn1);
 
 		///// show the good matches
 		cv::namedWindow("good_matches");
@@ -196,7 +208,7 @@ public:
 		cv::drawMatches(img_color_cur, kps_cur, img_color_lst, kps_lst, good_matches, img_match);
 		cv::putText(img_match, std::to_string(good_matches.size()), Point(10, 400), FONT_HERSHEY_SCRIPT_SIMPLEX, 2, Scalar::all(255), 3, 8);
 		cv::imshow("good_matches", img_match);
-		cv::moveWindow("good_matches", 700, 900);
+		cv::moveWindow("good_matches", 100, 900);
 		cv::waitKey(1);
 		
 		//  5.3 define input and output parameters
@@ -204,14 +216,10 @@ public:
 		cv::Mat tvector;
 		cv::Mat inliers;
 
-		// for (int i = 0; i < p3d.size(); i++) {
-		// 	std::cout << p3d[i] << pn_cur[i] << std::endl;
-		// }
-
 		//  5.4 calculate r and t // TODO, ransac is needed here!
-		solvePNP(p3d, pn_cur, _Krgb, rvector, tvector, inliers);
-		std::cout << "inliers num and portion: " << float(inliers.rows) << ", " <<  float(pn_lst.size()) 
-		          << ", " << float(inliers.rows) / float(pn_lst.size())  << std::endl;
+		solvePNP(pt3d, pn1, _Krgb, rvector, tvector, inliers);
+		std::cout << "inliers num and portion: " << float(inliers.rows) << ", " <<  float(pn0.size()) << ", " << float(inliers.rows) / float(pn0.size())  << std::endl;
+		//displayKeypointsMatching(img_color_cur, pn0, pn1, inliers);
 
 		// examine if the solution is successful
 		if (inliers.rows < 10)
@@ -224,49 +232,71 @@ public:
 		std::cout << "Rvector:\n" << Rvector << std::endl;
 		std::cout << "Tvector:\n" << Tvector << std::endl;
 
-		double score = float(inliers.rows) / kps_lst.size();
-		std::cout << "final Score: " << std::endl << "     " << score << std::endl;
+		
 
-
-		// check if the current frame should be updated and save to somewhere.
-		if (good_matches.size() < kps_lst.size() * 0.5) {
-			updateFrame(frame_cur, kps_cur, dscp_cur, good_matches, p3d, rvector, tvector);
-			_frames.push_back(frame_cur);
-			std::cout << "update the current frame. _______________" << _frames.size() << std::endl;
-			return score;
+		// check if the frame should be inserted to the waiting queue.
+		if (ifInsertCurrentFrameToQueue(kps_lst, good_matches)) {
+			updateFrame(frame_cur, kps_cur, dscp_cur, good_matches, pt3d, rvector, tvector);
+			_frames_list.push_back(frame_cur);
+			std::cout << "insert the Current Frame to queue.   " << _frames_list.size() << std::endl;
 		}
 
-	    return score;
+		// check if need to insert the new keyframe
+		if (ifCreateNewFrame(kps_lst, good_matches)) {
+			CRGBDFrame new_key_frame = triangulateNew3DPointsFromWaitingFramesAndReferenceFrame(_frames_list, frame_lst);
+			addKeyFrame(new_key_frame);
+			std::cout << "create new Key Frame.____________________________________________________________________________" << std::endl;
+			// for (int i = 0; i < new_key_frame._keypoints.size(); i++) {
+			// 	std::cout << i << ":    " << new_key_frame._keypoints[i].pt << " \t" << new_key_frame._pts_3d[i] << std::endl;
+			// 	std::cout << new_key_frame._descriptor.row(i) << std::endl;
+ 		// 	}
+
+			_frames_list.clear();
+		}
+
+		double score = float(inliers.rows) / kps_lst.size();
+		std::cout << "final Score: " << std::endl << "     " << score << std::endl;
+	    return 0;
+	}
+
+	bool ifInsertCurrentFrameToQueue(std::vector<cv::KeyPoint> kps_lst, std::vector<cv::DMatch> matches) {
+		if (matches.size() < 0.97 * kps_lst.size()) {
+			return true;
+		}
+		return false;
+	}
+
+	bool ifCreateNewFrame(std::vector<cv::KeyPoint> kps_lst, std::vector<cv::DMatch> matches)
+	{
+		std::cout << "if create new keyframe: " << matches.size() << " " << kps_lst.size() << " " << float(matches.size())/float(kps_lst.size()) << std::endl;
+		if (matches.size() < 0.90 * kps_lst.size() || _frames_list.size() > 10) {
+			return true;
+		}	
+		return false;
 	}
 
 	void updateFrame(CRGBDFrame& frame, std::vector<cv::KeyPoint> kps, cv::Mat dscp, 
-					 std::vector<DMatch> matches, std::vector<cv::Point3d> p3d, 
+					 std::vector<DMatch> matches, std::vector<cv::Point3d> pt3d, 
 		             cv::Mat rvector, cv::Mat tvector) 
 	{
+		frame._keypoints = kps;
+		dscp.copyTo(frame._descriptor);
 		frame._matches_to_ref = matches;
+		frame._pts_3d = pt3d;
 		rvector.copyTo(frame._Rvector);
 		tvector.copyTo(frame._Tvector);
-		frame._p3d = p3d;
-		std::vector<cv::KeyPoint> kps_new(frame._matches_to_ref.size());
-		Mat dscp_new(matches.size(), 32, CV_8U);
-		for (int i = 0; i < frame._matches_to_ref.size(); i++) {
-			kps_new[i] = kps[frame._matches_to_ref[i].queryIdx];
-			dscp.row(frame._matches_to_ref[i].queryIdx).copyTo(dscp_new.row(i));
-		}
-		frame._p3d = p3d;
-		frame._kps = kps_new;
-		dscp_new.copyTo(frame._dscp);
-
 	}
 
-	// This function is used to triangulate points from two frames and one reference key frame.
-	// we will select points with large shift in pixel, close and middle range and low reprojection error.
-	CRGBDFrame triangulateNew3DPointsFromWaitingFramesAndReferenceFrame(CRGBDFrame f0, CRGBDFrame f1, CRGBDFrame frame_ref) 
+	CRGBDFrame triangulateNew3DPointsFromWaitingFramesAndReferenceFrame(std::vector<CRGBDFrame> frames, CRGBDFrame frame_ref) 
 	{
-		//find the good new matches of the f0 and f1 two frames. 
+		//let's try, we randomly select two frames 
+		CRGBDFrame f0 = frames[frames.size()/2]; // the train frame, older one
+		CRGBDFrame f1 = frames[frames.size()-1]; // the query frame, newer one
+
+		//find the good new matches
 		std::vector<cv::DMatch> matches;
 	    cv::BFMatcher matcher(NORM_HAMMING, true);
-	    matcher.match(f1._dscp, f0._dscp, matches); // query, train
+	    matcher.match(f1._descriptor, f0._descriptor, matches); // query, train
 
 	    std::vector<cv::DMatch> new_matches;
 	    int id0, id1;
@@ -309,8 +339,8 @@ public:
 		cv::Mat R0, T0, R1, T1;
 		std::vector<cv::Point3d> triang_points;
 		for (int i = 0; i < good_new_matches.size(); i++) {
-			pn0.push_back(f0._kps[good_new_matches[i].trainIdx].pt);
-			pn1.push_back(f1._kps[good_new_matches[i].queryIdx].pt);
+			pn0.push_back(f0._keypoints[good_new_matches[i].trainIdx].pt);
+			pn1.push_back(f1._keypoints[good_new_matches[i].queryIdx].pt);
 		}
 		eulerAnglesToRotationMatrix(f0._Rvector.at<double>(0,0), f0._Rvector.at<double>(1,0), f0._Rvector.at<double>(2,0), R0);
 		eulerAnglesToRotationMatrix(f1._Rvector.at<double>(0,0), f1._Rvector.at<double>(1,0), f1._Rvector.at<double>(2,0), R1);
@@ -345,28 +375,64 @@ public:
   		// insert key points that have 3d points to ref frame
   		int ct = 0;
   		for (int i = 0; i < f1._matches_to_ref.size(); i++) {
-  			kps_new.push_back(f1._kps[f1._matches_to_ref[i].queryIdx]);
-  			pts_new.push_back(frame_ref._p3d[f1._matches_to_ref[i].trainIdx]);
-  			f1._dscp.row(f1._matches_to_ref[i].queryIdx).copyTo(dscp_new.row(ct));
+  			kps_new.push_back(f1._keypoints[f1._matches_to_ref[i].queryIdx]);
+  			pts_new.push_back(frame_ref._pts_3d[f1._matches_to_ref[i].trainIdx]);
+  			f1._descriptor.row(f1._matches_to_ref[i].queryIdx).copyTo(dscp_new.row(ct));
   			ct++;
   		}
 
   		/*
   		// insert new triangulated key points
   		for (int i = 0; i < points_get_matches.size(); i++) {
-  			kps_new.push_back(f1._kps[points_get_matches[i].queryIdx]);
+  			kps_new.push_back(f1._keypoints[points_get_matches[i].queryIdx]);
   			pts_new.push_back(new_points[i]);
-  			f1._dscp.row(points_get_matches[i].queryIdx).copyTo(dscp_new.row(ct));
+  			f1._descriptor.row(points_get_matches[i].queryIdx).copyTo(dscp_new.row(ct));
   			ct++;
   		}
 		*/
 
-  		new_key_frame._kps = kps_new;
-  		new_key_frame._p3d = pts_new;
-  		dscp_new.copyTo(new_key_frame._dscp);
+  		new_key_frame._keypoints = kps_new;
+  		new_key_frame._pts_3d = pts_new;
+  		dscp_new.copyTo(new_key_frame._descriptor);
   		
 
   		return new_key_frame;
+	}
+
+	void solvePNP(std::vector<Point3d> points, std::vector<Point2d> pixels, cv::Mat K, cv::Mat& r, cv::Mat& t, cv::Mat& inliers)
+	{
+		vector<Point2f> pn;
+		vector<Point3f> pts;
+		cv::Mat distortionCoefficients;
+
+		for (int i = 0; i < pixels.size(); i++) {
+			pn.push_back(Point2f(float(pixels[i].x), float(pixels[i].y)));
+			pts.push_back(Point3f(float(points[i].x), float(points[i].y), float(points[i].z)));
+		}
+
+		cv::solvePnPRansac(pts, pn,
+		               K, distortionCoefficients,
+		               r, t, 
+		               true, 200, 2.0, 20, inliers, CV_EPNP);
+	}
+
+    /// get the cv::Point2d type key points pair list from two key points set with their matchings
+    /// then the two lists of points are in the same length
+	void keyPointPairsToPointVectorPairs(std::vector<cv::KeyPoint> kpt, std::vector<cv::KeyPoint> kpq, std::vector<DMatch> m, 
+		                                 std::vector<cv::Point2d>& pst, std::vector<cv::Point2d>& psq,
+		                                 std::vector<int>& idxt, std::vector<int>& idxq)
+	{
+		for (int i = 0; i < m.size(); i++) {
+			cv::Point2d pt, pq;
+		  	pt = kpt[m[i].trainIdx].pt;
+		  	pq = kpq[m[i].queryIdx].pt;
+
+		  	pst.push_back(pt);
+		  	idxt.push_back(m[i].trainIdx);
+
+		  	psq.push_back(pq);
+		  	idxq.push_back(m[i].queryIdx);
+	  	}
 	}
 
 	/// triangulate points
@@ -400,70 +466,7 @@ public:
   		RT0.release();
   		RT1.release();
 	}
- 
- 	// customize PNP to overcome the bug in opencv on data type
-	void solvePNP(std::vector<Point3d> points, std::vector<Point2d> pixels, cv::Mat K, cv::Mat& r, cv::Mat& t, cv::Mat& inliers)
-	{
-		vector<Point2f> pn;
-		vector<Point3f> pts;
-		cv::Mat distortionCoefficients;
 
-		for (int i = 0; i < pixels.size(); i++) {
-			pn.push_back(Point2f(float(pixels[i].x), float(pixels[i].y)));
-			pts.push_back(Point3f(float(points[i].x), float(points[i].y), float(points[i].z)));
-		}
-
-		// first iteration
-		cv::solvePnPRansac(pts, pn,
-		               K, distortionCoefficients,
-		               r, t, 
-		               true, 100, 1.0, 30, inliers, CV_EPNP);
-
-		vector<Point2f> pn_2;
-		vector<Point3f> pts_2;
-		vector<int> idx_vec;
-
-		for (int i = 0; i < inliers.rows; i++) {
-			pn_2.push_back(pn[inliers.at<int>(i, 0)]);
-			pts_2.push_back(pts[inliers.at<int>(i, 0)]);
-			idx_vec.push_back(inliers.at<int>(i, 0));
-		}
-
-		// second iteration
-		cv::Mat inliers_2;
-		cv::solvePnPRansac(pts_2, pn_2,
-		               K, distortionCoefficients,
-		               r, t, 
-		               true, 50, 1.0, 20, inliers_2, CV_EPNP);
-
-		// change the number in inlier2 to the index in inlier1
-		for (int i = 0; i < inliers_2.rows; i++) {
-			inliers_2.at<int>(i, 0) = inliers.at<int>(inliers_2.at<int>(i, 0), 0);
-		}
-
-		inliers_2.copyTo(inliers);
-	}
-
-    /// get the cv::Point2d type key points pair list from two key points set with their matchings
-    /// then the two lists of points are in the same length
-	void keyPointPairsToPointVectorPairs(std::vector<cv::KeyPoint> kpt, std::vector<cv::KeyPoint> kpq, std::vector<DMatch> m, 
-		                                 std::vector<cv::Point2d>& pst, std::vector<cv::Point2d>& psq,
-		                                 std::vector<int>& idxt, std::vector<int>& idxq)
-	{
-		for (int i = 0; i < m.size(); i++) {
-			cv::Point2d pt, pq;
-		  	pt = kpt[m[i].trainIdx].pt;
-		  	pq = kpq[m[i].queryIdx].pt;
-
-		  	pst.push_back(pt);
-		  	idxt.push_back(m[i].trainIdx);
-
-		  	psq.push_back(pq);
-		  	idxq.push_back(m[i].queryIdx);
-	  	}
-	}
-
-	// display matched pixels in two images.
 	void displayKeypointsMatching(cv::Mat img, std::vector<cv::Point2d> pn_lst, std::vector<cv::Point2d> pn_cur, cv::Mat inliers)
 	{
 		// Display th corresponding points
@@ -475,7 +478,7 @@ public:
 			cv::line(image_show, pn_lst[id], pn_cur[id], cv::Scalar(0, 255, 0), 1, CV_AA, 0);
 		}
 		cv::Mat image_ref_show;
-		//cv::drawKeypoints (_keyframes[_keyframes.size()-1]._img_rgb, _keyframes[_keyframes.size()-1]._kps, image_ref_show);
+		cv::drawKeypoints (_keyframes[_keyframes.size()-1]._img_rgb, _keyframes[_keyframes.size()-1]._keypoints, image_ref_show);
 
 		cv::namedWindow("line");
 		cv::moveWindow("line", 1600, 900);
@@ -487,7 +490,6 @@ public:
 		image_show.release();
 	}
 
-	// compute the reprojection a 3d point cloud to two 2d images 
 	std::vector<double> computeReProjectionError(const std::vector<cv::Point2d>& pn0, const std::vector<cv::Point2d>& pn1, 
   							 const cv::Mat& K, const cv::Mat& r0, const cv::Mat& t0, const cv::Mat& r1, const cv::Mat& t1, 
   		                     std::vector<cv::Point3d> pointcloud)
