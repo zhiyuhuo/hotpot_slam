@@ -10,6 +10,7 @@
 
 #include "common_headers.h"
 #include "map_point.h"
+#include "keyframe.h"
 
 class CMapPoint;
 // CMap is the only instance that manages all the points and frames.
@@ -18,32 +19,45 @@ class CMap
 public: // members
 	// total points that have been added to map. include the deleted points
 	int _count_point;
+	int _count_rgbdframe;
 	int _count_frame;
 	// points
-	std::map<int, CMapPoint> _worldpoints;
-	// key frames
-	std::map<int, CRGBDFrame> _keyframes;
+	std::map<int, CMapPoint*> _worldpoints;
+	// rgbd frames
+	std::map<int, CRGBDFrame> _rgbdframes;
+	// keyframes
+	std::map<int, CKeyframe*> _keyframes;
 
 public: // functions
 	CMap()
 	{
 		_count_point = 0;
+		_count_rgbdframe = 0;
 		_count_frame = 0;
-		_worldpoints = std::map<int, CMapPoint>();
-		_keyframes = std::map<int, CRGBDFrame>();
+		_worldpoints = std::map<int, CMapPoint*>();
+		_rgbdframes = std::map<int, CRGBDFrame>();
+		_keyframes = std::map<int, CKeyframe*>();
 	}
 
 	~CMap(){}
 
-	void addMapPoint(CMapPoint point)
+	void addMapPoint(CMapPoint* point)
 	{
-		point.setPointID(_count_point);
-		_worldpoints[_count_point++] = point;
+		point->setPointID(_count_point);
+		_worldpoints[_count_point] = point;
+		_count_point++;
 	}
 
-	void addKeyFrame(CRGBDFrame frame)
+	void addRGBDFrame(CRGBDFrame frame)
 	{
-		frame.setFrameID(_count_frame);
+		frame.setFrameID(_count_rgbdframe);
+		_rgbdframes[_count_rgbdframe] = frame;
+		_count_rgbdframe++;
+	}
+
+	void addKeyframe(CKeyframe* frame)
+	{
+		frame->setFrameID(_count_frame);
 		_keyframes[_count_frame] = frame;
 		_count_frame++;
 	}
@@ -52,12 +66,16 @@ public: // functions
 	{
 		std::cout << "key frames number: " << _keyframes.size() << std::endl;
 		for (int i = 0; i < _keyframes.size(); i++){
-			std::cout << i << ": " << _keyframes[i]._id << std::endl;
+			std::cout << i << ": " << _keyframes[i]->_id << std::endl;
+			for (int j = 0; j < _keyframes[i]->_keypoints.size(); j++) {
+				std::cout << j << ": " << _keyframes[i]->_keypoints[j].ifCheck() << _keyframes[i]->_keypoints[j]._kp.pt << _keyframes[i]->_keypoints[j]._dscp << std::endl;
+			}
 		}
+
 		std::cout << "world map points number: " << std::endl;
 		for (int i = 0; i < _worldpoints.size(); i++) {
-			std::cout << _worldpoints[i]._id << " " << _worldpoints[i]._p3d << " " << _worldpoints[i]._count_obv << std::endl;
-			std::cout << _worldpoints[i]._dscp << std::endl;
+			std::cout << _worldpoints[i]->_id << " " << _worldpoints[i]->_p3d << " " << _worldpoints[i]->_count_obv << std::endl;
+			std::cout << _worldpoints[i]->_dscp << std::endl;
 		}
 	}
 };

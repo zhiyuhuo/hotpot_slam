@@ -34,7 +34,7 @@ public: // functions
 		_p3d.x = 0;
 		_p3d.y = 0;
 		_p3d.z = 0;
-		_dscp = Mat::zeros(1, 32, CV_8U);
+		_dscp = Mat::zeros(1, ORBMATCHTH, CV_8U);
 	}
 
 	CMapPoint(cv::Point3d p3d, cv::Mat dscp, int id = -1, int count_obv = 0)

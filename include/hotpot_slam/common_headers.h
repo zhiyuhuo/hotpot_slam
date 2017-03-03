@@ -1,9 +1,14 @@
 #ifndef COMMON_HEADERS_H_
 #define COMMON_HEADERS_H_
 
-#include "rgbd_frame.h"
+#define ORBDSCP_L 32
+#define ORBMATCHTH 32
+
 #include "parameter_reader.h"
 #include "camera_para.h"
+#include "rgbd_frame.h"
+#include "keypoint.h"
+#include "keyframe.h"
 #include "track_camera.h"
 #include "map_point.h"
 #include "worldmap.h"

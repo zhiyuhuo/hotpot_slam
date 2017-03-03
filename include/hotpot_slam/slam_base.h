@@ -81,53 +81,28 @@ public:
 		else {
 			// initilization, firstly update world map.
 			_initializer.initialize();
-			_initializer.buildInitialMapPointsFromInitialKeyFrame(_worldmap);
-			_first_key_frame = _initializer._first_key_frame;
+			_initializer.buildInitialMapFromInitialRGBDFrame(_worldmap);
 			_worldmap.showMapInfo();
-			_tracker.setReferenceFrame(_first_key_frame);
+
 			return 1;
 		}
 	}
 
 	int trackCamera()
 	{
-		_iftracking = _tracker.trackIter(_frame_cur);
-		if (checkIfAddNewKeyFrame())
-		{
-			_worldmap.addKeyFrame(_tracker._frames.back());
-		}
+		// _iftracking = _tracker.trackIter(_frame_cur);
+		// if (checkIfAddNewKeyFrame())
+		// {
+		// 	_worldmap.addRGBDFrame(_tracker._frames.back());
+		// }
+
+		_tracker.trackMap(_frame_cur, _worldmap);
 		_tracker._frames.clear();
 	}
 
 	bool checkIfAddNewKeyFrame() {
-		// 1. grab the new income frame from _tracker
 		bool res = false;
-		if ( _tracker._frames.size() > 0 ) {
-			CRGBDFrame f = _tracker._frames.back();
-			if ( _worldmap._keyframes.size() <= 0 ) {
-				res = true;
-			}
-			else {
-				double max_r = 0.0;
-				int nearest_frame_id = 0;
-				std::map<int, CRGBDFrame>::iterator it;
-				for (it = _worldmap._keyframes.begin(); it != _worldmap._keyframes.end(); it++) {
-					double r = scoreMatchOfTwoFrames(f, it->second);
-					std::cout << it->first << ": " << r << std::endl;
-					if (r > max_r) {
-						max_r = r;
-						nearest_frame_id = it->first;
-					}
-				}
-
-				_tracker.setReferenceFrame(_worldmap._keyframes[nearest_frame_id]);
-
-				if (max_r < 0.5) {
-					res = true;
-				}
-			}
-		}
-
+		
 		return res;
 	}
 
