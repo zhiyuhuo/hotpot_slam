@@ -19,12 +19,9 @@ class CMap
 public: // members
 	// total points that have been added to map. include the deleted points
 	int _count_point;
-	int _count_rgbdframe;
 	int _count_frame;
 	// points
 	std::map<int, CMapPoint*> _worldpoints;
-	// rgbd frames
-	std::map<int, CRGBDFrame> _rgbdframes;
 	// keyframes
 	std::map<int, CKeyframe*> _keyframes;
 
@@ -32,10 +29,8 @@ public: // functions
 	CMap()
 	{
 		_count_point = 0;
-		_count_rgbdframe = 0;
 		_count_frame = 0;
 		_worldpoints = std::map<int, CMapPoint*>();
-		_rgbdframes = std::map<int, CRGBDFrame>();
 		_keyframes = std::map<int, CKeyframe*>();
 	}
 
@@ -46,13 +41,6 @@ public: // functions
 		point->setPointID(_count_point);
 		_worldpoints[_count_point] = point;
 		_count_point++;
-	}
-
-	void addRGBDFrame(CRGBDFrame frame)
-	{
-		frame.setFrameID(_count_rgbdframe);
-		_rgbdframes[_count_rgbdframe] = frame;
-		_count_rgbdframe++;
 	}
 
 	void addKeyframe(CKeyframe* frame)
@@ -68,7 +56,9 @@ public: // functions
 		for (int i = 0; i < _keyframes.size(); i++){
 			std::cout << i << ": " << _keyframes[i]->_id << std::endl;
 			for (int j = 0; j < _keyframes[i]->_keypoints.size(); j++) {
-				std::cout << j << ": " << _keyframes[i]->_keypoints[j].ifCheck() << _keyframes[i]->_keypoints[j]._kp.pt << _keyframes[i]->_keypoints[j]._dscp << std::endl;
+				std::cout << j << ": " << _keyframes[i]->_keypoints[j].ifTrack() 
+				                       << _keyframes[i]->_keypoints[j]._kp.pt 
+				                       << _keyframes[i]->_keypoints[j]._dscp << std::endl;
 			}
 		}
 

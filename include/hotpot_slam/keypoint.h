@@ -71,8 +71,10 @@ public:
 		_ifTracked = true;
 	}
 
-	bool ifCheck()
+	bool ifTrack()
 	{
+		if (_pmappoint == NULL)
+			return false;
 		return _ifTracked;
 	}
 

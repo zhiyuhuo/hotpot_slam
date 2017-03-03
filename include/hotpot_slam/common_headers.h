@@ -4,17 +4,81 @@
 #define ORBDSCP_L 32
 #define ORBMATCHTH 32
 
-#include "parameter_reader.h"
-#include "camera_para.h"
-#include "rgbd_frame.h"
-#include "keypoint.h"
-#include "keyframe.h"
-#include "track_camera.h"
-#include "map_point.h"
-#include "worldmap.h"
-#include "g2o_bridge.h"
-#include "initializer.h"
-#include "slam_base.h"
+#include <stdlib.h>
+#include <iostream>
+#include <vector>
+#include <map>
+#include <string>
+#include <map>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+
+using namespace std;
+using namespace cv;
+
+class CTrackResult
+{
+public:
+  double _score;
+  bool  _iftrack;
+  bool  _ifshift;
+  double   _matchesnum;
+  double   _inliersnum;
+
+  CTrackResult ()
+  {
+    _score = 1.0;
+    _iftrack = true;
+    _ifshift = false;
+    _matchesnum = 0.0;
+    _inliersnum = 0.0;
+  }
+  ~CTrackResult()
+  {}
+
+  void reset()
+  {
+     _score = 1.0;
+    _iftrack = true;
+    _ifshift = false;
+    _matchesnum = 0.0;
+    _inliersnum = 0.0;   
+  }
+};
+
+cv::Mat eulerAnglesToRotationMatrix(double x, double y, double z, cv::Mat& R)
+{
+      // Calculate rotation about x axis
+      cv::Mat R_x = (cv::Mat_<double>(3,3) <<
+                 1,       0,              0,
+                 0,       cos(x),   -sin(x),
+                 0,       sin(x),   cos(x)
+                 );
+       
+      // Calculate rotation about y axis
+      cv::Mat R_y = (cv::Mat_<double>(3,3) <<
+                 cos(y),    0,      sin(y),
+                 0,               1,      0,
+                 -sin(y),   0,      cos(y)
+                 );
+       
+      // Calculate rotation about z axis
+      cv::Mat R_z = (cv::Mat_<double>(3,3) <<
+                 cos(z),    -sin(z),      0,
+                 sin(z),    cos(z),       0,
+                 0,               0,                  1);
+         
+         
+      // Combined rotation matrix
+      cv::Mat Rm = R_z * R_y * R_x;
+      Rm.copyTo(R);
+      return R;
+     
+  }
 
 
 std::vector<double> rotationMatrixToQuanterion(Mat r)
@@ -58,6 +122,7 @@ std::vector<double> rotationMatrixToQuanterion(Mat r)
 
 std::vector<double> eulerToQuaternion(double pitch, double roll, double yaw)
 {
+
   std::vector<double> q(4, 0);
   double t0 = std::cos(yaw * 0.5);
   double t1 = std::sin(yaw * 0.5);
@@ -71,9 +136,20 @@ std::vector<double> eulerToQuaternion(double pitch, double roll, double yaw)
   q[2] = t0 * t2 * t5 + t1 * t3 * t4;
   q[3] = t1 * t2 * t4 - t0 * t3 * t5;
   return q;
+
 }
 
-
+#include "parameter_reader.h"
+#include "camera_para.h"
+#include "rgbd_frame.h"
+#include "keypoint.h"
+#include "keyframe.h"
+#include "track_camera.h"
+#include "map_point.h"
+#include "worldmap.h"
+#include "g2o_bridge.h"
+#include "initializer.h"
+#include "slam_base.h"
 
 
 

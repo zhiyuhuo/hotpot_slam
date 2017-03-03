@@ -121,7 +121,7 @@ int main(int argc, char **argv)
 
       // publish worldmap points
       broadcastTF();
-      editPointCloudMsg(slam._first_key_frame._p3d, msg_pointcloud);
+      editPointCloudMsg(slam._init_rgbdframe._p3d, msg_pointcloud);
       pub_pc.publish(msg_pointcloud);
       id_pc++;
 

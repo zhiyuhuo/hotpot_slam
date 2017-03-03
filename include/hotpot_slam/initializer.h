@@ -25,7 +25,7 @@ public: // camera parameter and add-in frames
 	CRGBDFrame _frame_lst;
 
 public: // first key frame and first group of map points. The camera is at [I 0] for the first frame.
-	CRGBDFrame _first_rgbd_frame;
+	CRGBDFrame _first_rgbdframe;
 	CKeyframe _init_keyframe;
 
 	std::vector<cv::KeyPoint> _kps;
@@ -66,14 +66,14 @@ public:
 	// start the initialization work after read enough data
 	int initialize()
 	{
-		_first_rgbd_frame = _frame_cur;
+		_first_rgbdframe = _frame_cur;
 
-		initializeFromOneFramebyRGBPoints(_first_rgbd_frame);
+		initializeFromOneFramebyRGBPoints(_first_rgbdframe);
 
 		std::cout << "result of init: " 
-					<< _first_rgbd_frame._kps.size() << " " 
-					<< _first_rgbd_frame._p3d.size() << " " 
-					<< _first_rgbd_frame._dscp.size() << endl;
+					<< _first_rgbdframe._kps.size() << " " 
+					<< _first_rgbdframe._p3d.size() << " " 
+					<< _first_rgbdframe._dscp.size() << endl;
 
 		return 0;
 	}
@@ -155,7 +155,7 @@ public:
 		cv::namedWindow("valid_region_mat");
 		cv::imshow("valid_region_mat", mat_dist);
 		cv::waitKey(0);
-		cv::destroyWindow("valid_mat");
+		cv::destroyWindow("valid_region_mat");
 		// *********** draw mask end
 
 		// 4. extract the key points from the gray image
@@ -203,11 +203,12 @@ public:
 	int buildInitialMapFromInitialRGBDFrame(CMap& worldmap)
 	{
 		CKeyframe* keyframe = new CKeyframe();
-		for (int i = 0; i < _first_rgbd_frame._kps.size(); i++) {
-			CMapPoint* pt = new CMapPoint(_first_rgbd_frame._p3d[i], _first_rgbd_frame._dscp.row(i));
+		for (int i = 0; i < _first_rgbdframe._kps.size(); i++) {
+			CMapPoint* pt = new CMapPoint(_first_rgbdframe._p3d[i], _first_rgbdframe._dscp.row(i));
+			pt->_ifvalid = true;
 			worldmap.addMapPoint(pt);
 
-			CKeypoint kp(_first_rgbd_frame._kps[i], _first_rgbd_frame._dscp.row(i));
+			CKeypoint kp(_first_rgbdframe._kps[i], _first_rgbdframe._dscp.row(i));
 			kp.trackToMapPoint(pt);
 			keyframe->addKeypoint(kp);
 		}

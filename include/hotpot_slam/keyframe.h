@@ -43,12 +43,7 @@ public:
 public:
 	CKeyframe()
 	{
-		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
-		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
-	}
-
-	CKeyframe(cv::Mat img_rgb)
-	{
+		_id = -1;
 		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
 		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
 	}
@@ -56,6 +51,18 @@ public:
 	~CKeyframe()
 	{
 
+	}
+
+	void reset()
+	{
+		_Rvector.at<double>(0, 0) = 0;
+		_Rvector.at<double>(1, 0) = 0;
+		_Rvector.at<double>(2, 0) = 0;
+		_Tvector.at<double>(0, 0) = 0;
+		_Tvector.at<double>(1, 0) = 0;
+		_Tvector.at<double>(2, 0) = 0;
+		_id = -1;
+		_keypoints.clear();
 	}
 
 	void setFrameID(int id) 
@@ -72,6 +79,24 @@ public:
 	{
 		rvector.copyTo(_Rvector);
 		tvector.copyTo(_Tvector);
+	}
+
+	void copyFrom(CKeyframe& kf)
+	{
+		_id = kf._id;
+		kf._Rvector.copyTo(_Rvector);
+		kf._Tvector.copyTo(_Tvector);
+		_keypoints = kf._keypoints;
+	}
+
+	void buildDscpMat(cv::Mat& mat)
+	{
+		cv::Mat dscp = cv::Mat::zeros(_keypoints.size(), ORBDSCP_L, CV_8U);
+		for (int i = 0; i < _keypoints.size(); i++) {
+			_keypoints[i]._dscp.copyTo(dscp.row(i));
+		}
+		dscp.copyTo(mat);
+		dscp.release();
 	}
 
 };

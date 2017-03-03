@@ -20,6 +20,8 @@ public: // members
 	int _id;
 	// the number being observed
 	int _count_obv;
+	// if the point is valid
+	bool _ifvalid;
 	// 3D point position in the world coordinate (origin at the camera pose of the first frame)
 	cv::Point3d _p3d;	
 	// the average ORB descriptor of the map point (however, I hope it can be the one with the highest probabiliry)
@@ -30,6 +32,7 @@ public: // functions
 	CMapPoint()
 	{
 		_id = -1;
+		_ifvalid = false;
 		_count_obv = 0;
 		_p3d.x = 0;
 		_p3d.y = 0;
@@ -37,9 +40,10 @@ public: // functions
 		_dscp = Mat::zeros(1, ORBMATCHTH, CV_8U);
 	}
 
-	CMapPoint(cv::Point3d p3d, cv::Mat dscp, int id = -1, int count_obv = 0)
+	CMapPoint(cv::Point3d p3d, cv::Mat dscp, int count_obv = 0, int id = -1)
 	{
 		_id = id;
+		_ifvalid = false;
 		_count_obv = count_obv;
 		_p3d = p3d;
 		dscp.copyTo(_dscp);

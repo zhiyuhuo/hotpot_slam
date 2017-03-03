@@ -46,18 +46,6 @@ public:
 	cv::Mat _Rvector;
 	cv::Mat _Tvector;
 
-	/// the last matches to the recent reference frame 
-	/// (this will be a temperal member and will not work when the frame becomes a key frame)
-	std::vector<DMatch> _matches_to_ref;
-
-	/// bobw data. TODO. this is for relocalization and global optimization. 
-	DBoW2::BowVector bowVec;
-
-	// a pointer to the parent map. When the frame is deleted, the map will know.
-	CMap* _parent_map;
-	// pointers to world points linked
-	std::map<int, CMapPoint*> _linked_points;
-
 public:
 	CRGBDFrame()
 	{

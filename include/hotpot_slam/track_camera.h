@@ -19,6 +19,7 @@ class CRGBDFrame;
 class CCameraPara;
 class CMap;
 class CMapPoint;
+class CTrackResult;
 
 class CTracker
 {
@@ -34,12 +35,11 @@ public:
 	cv::Mat _Tvector;
 
 	// two frames of tracking. _frame_cur is the new coming frame and the _frame_lst is the last used frame.
-	CRGBDFrame _frame_ref;
-	CRGBDFrame _frame_cur;
-	CKeyframe* _frame_kf;
+	CKeyframe _frame_new;
 
-	// a list of the candidate frames which can to be add to the world map. 
-	vector<CRGBDFrame> _frames;
+	// tracking result
+	CTrackResult _trackres;
+
 
 public:
 	CTracker()
@@ -70,6 +70,9 @@ public:
   		// init R and T 
   		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
   		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
+
+  		// track result
+  		_trackres = CTrackResult();
 	}
 
 	CTracker(CParameterReader para)
@@ -100,6 +103,9 @@ public:
   		_Rvector = cv::Mat::zeros(3, 1, CV_64F);
   		_Tvector = cv::Mat::zeros(3, 1, CV_64F);
 
+  		// track result
+  		_trackres = CTrackResult();
+
 	}
 
 	~CTracker()
@@ -108,35 +114,32 @@ public:
 		_Tvector.release();
 	}
 
-	bool trackMap(const CRGBDFrame& frame_cur, CMap& worldmap)
+	bool trackKeyframe(const CRGBDFrame& rgbframe_cur, CKeyframe& keyframe)
 	{
-		//double score = trackWorldMap(frame_cur, worldmap, _Rvector, _Tvector);
-
-		_frame_kf = worldmap._keyframes[0];
-		double score = trackKeyframe(frame_cur, _frame_kf, _Rvector, _Tvector);
+		double score = trackKeyframe(rgbframe_cur, keyframe, _Rvector, _Tvector);
 
 		if (score < 0)
 			return false;
 
-		return true;		
+		return true;			
 	}
 
-	bool trackKeyframe(const CRGBDFrame& frame_cur, CKeyframe* keyframe, cv::Mat& Rvector, cv::Mat& Tvector)
+	bool trackKeyframe(const CRGBDFrame& rgbdframe_cur, CKeyframe& keyframe, cv::Mat& Rvector, cv::Mat& Tvector)
 	{
 		//0. extract the image and key points data from the last/reference frame and the image from the current frame.
-		cv::Mat img_color_cur = frame_cur._img_rgb;
+		cv::Mat img_color_cur = rgbdframe_cur._img_rgb;
 		cv::Mat img_gray_cur;
 		cv::cvtColor(img_color_cur, img_gray_cur, CV_BGR2GRAY);
 		cv::Mat img_cur = img_gray_cur;
 
 		std::vector<cv::KeyPoint> kps_kf;
-		cv::Mat dscp_kf = cv::Mat::zeros(keyframe->_keypoints.size(), ORBMATCHTH, CV_8U);	
+		cv::Mat dscp_kf = cv::Mat::zeros(keyframe._keypoints.size(), ORBMATCHTH, CV_8U);	
 
 		//1. Use the input R and T as the initail R and T to reproject the map points to the current frame and see if the 
 		//map points are visible. select the points that are visible. (Here in this coding stage I will use all the points)
-		for (int i = 0; i < keyframe->_keypoints.size(); i++) {
-			kps_kf.push_back(keyframe->_keypoints[i]._kp);
-			keyframe->_keypoints[i]._dscp.copyTo(dscp_kf.row(i));
+		for (int i = 0; i < keyframe._keypoints.size(); i++) {
+			kps_kf.push_back(keyframe._keypoints[i]._kp);
+			keyframe._keypoints[i]._dscp.copyTo(dscp_kf.row(i));
 		}
 
 		//2. extract cv::KeyPoint s from the current frame and compute the dscp of the current frame.
@@ -151,8 +154,8 @@ public:
 	    cv::BFMatcher matcher(NORM_HAMMING, true);
 	    matcher.match(dscp_cur, dscp_kf, matches);
 	    cout << "matches num: " << matches.size() << std::endl;
-	    if (matches.size() < 30)
-			return -1;
+	    if (matches.size() < 50)
+			std::cout << "matches too low" << std::endl;
 
 		// 4. filter low score match, only keep the high score matches
 		//	  we will have several filters. 1st from score, 2nd from fake optical flow
@@ -167,16 +170,16 @@ public:
 
 		std::cout << "good_matches num: " << good_matches.size() << " " << dscp_kf.rows << " " 
 		          << float(good_matches.size()) / float(dscp_kf.rows) << std::endl;
-		if (good_matches.size() < 20)
-			return -2;
+		if (good_matches.size() < 30)
+			std::cout << "good_matches too low" << std::endl;
 
 		// 5. compute the R,T use solveRansac. Given the 3D points and their projections on the current image
 		//  5.1 get 3D point and 2d pixels
 		std::vector<cv::Point3d> p3d;
 		std::vector<cv::Point2d> pn_cur;
 		for (int i = 0; i < good_matches.size(); i++) {
-			if (keyframe->_keypoints[good_matches[i].trainIdx].ifCheck()) {
-				p3d.push_back( keyframe->_keypoints[good_matches[i].trainIdx]._pmappoint->_p3d);
+			if (keyframe._keypoints[good_matches[i].trainIdx].ifTrack()) {
+				p3d.push_back( keyframe._keypoints[good_matches[i].trainIdx]._pmappoint->_p3d);
 				pn_cur.push_back(kps_cur[good_matches[i].queryIdx].pt);
 			}
 		}
@@ -193,7 +196,7 @@ public:
 
 		// examine if the solution is successful
 		if (inliers.rows < 10)
-			return -3;
+			std::cout << "inliers for PnP too low" << std::endl;
 
 		// rectify the rotation angle and translate to match the camera coordinate
 		rvector.copyTo(Rvector);
@@ -219,21 +222,19 @@ public:
 		cv::moveWindow("matched_key_points", 1600, 900);
 		cv::waitKey(1);
 
-		CKeyframe* frame_new = new CKeyframe();
-		buildNewKeyFrame(keyframe, Rvector, Tvector, kps_cur, dscp_cur, good_matches, frame_new);
-
-		if (good_matches.size() < 60) {
-			
-		}
+		// update the _frame_new using current frame
+		buildNewKeyFrame(keyframe, Rvector, Tvector, kps_cur, dscp_cur, good_matches, _frame_new);
+		updateTrackRes(keyframe._keypoints.size(), good_matches.size(), inliers.rows);
+		// update the dscp of the current keyframe 
 
 		return 0;		
 	}
 
 	/// track the world map and return the score
-	double trackWorldMap(const CRGBDFrame& frame_cur, CMap& worldmap, cv::Mat& Rvector, cv::Mat& Tvector)
+	double trackWorldMap(const CRGBDFrame& rgbdframe_cur, CMap& worldmap, cv::Mat& Rvector, cv::Mat& Tvector)
 	{
 		//0. extract the image and key points data from the last/reference frame and the image from the current frame.
-		cv::Mat img_color_cur = frame_cur._img_rgb;
+		cv::Mat img_color_cur = rgbdframe_cur._img_rgb;
 		cv::Mat img_gray_cur;
 		cv::cvtColor(img_color_cur, img_gray_cur, CV_BGR2GRAY);
 		cv::Mat img_cur = img_gray_cur;
@@ -336,30 +337,33 @@ public:
 		cv::moveWindow("matched_key_points", 1600, 900);
 		cv::waitKey(1);
 
+		updateTrackRes(worldmap._worldpoints.size(), good_matches.size(), inliers.rows);
+
 		return 0;
 	}
 
-	void buildNewKeyFrame(CKeyframe* frame_kf, cv::Mat rvector, cv::Mat tvector, 
+	void buildNewKeyFrame(CKeyframe keyframe, cv::Mat rvector, cv::Mat tvector, 
 						  std::vector<cv::KeyPoint> kps, cv::Mat dscp, std::vector<cv::DMatch> matches, 
-		                  CKeyframe* frame_new)
+		                  CKeyframe& frame_new)
 	{
-		frame_new->setRT(rvector, tvector);
+		frame_new.reset();
+		frame_new.setRT(rvector, tvector);
 		for (int i = 0; i < kps.size(); i++) {
 			CKeypoint kp(kps[i], dscp.row(i));
-			frame_new->addKeypoint(kp);
+			frame_new.addKeypoint(kp);
 		}
 		int id_kf, id_new;
 		for (int i = 0; i < matches.size(); i++) {
 			id_kf = matches[i].trainIdx;
 			id_new = matches[i].queryIdx;
-			if (frame_kf->_keypoints[id_kf].ifCheck()) {
-				frame_new->_keypoints[id_new].trackToMapPoint( frame_kf->_keypoints[id_kf]._pmappoint );
+			if (keyframe._keypoints[id_kf].ifTrack()) {
+				frame_new._keypoints[id_new].trackToMapPoint( keyframe._keypoints[id_kf]._pmappoint );
 			}
 		}
 
 		// for (int i = 0; i < frame_new->_keypoints.size(); i++) {
 		// 	std::cout << i << "- : " << frame_new->_keypoints[i]._kp.pt << frame_new->_keypoints[i]._dscp << std::endl;
-		// 	if (frame_new->_keypoints[i].ifCheck()) {
+		// 	if (frame_new->_keypoints[i].ifTrack()) {
 		// 		std::cout << frame_new->_keypoints[i]._pmappoint->_p3d << std::endl;
 		// 	}
 		// 	else {
@@ -368,40 +372,26 @@ public:
 		// }
 	}
 
-	/// triangulate points
-  	void triangulatePixels(const std::vector<cv::Point2d>& pn0, const std::vector<cv::Point2d>& pn1, 
-  							 const cv::Mat& K, const cv::Mat& R0, const cv::Mat& T0, const cv::Mat& R1, const cv::Mat& T1, 
-  		                     std::vector<cv::Point3d>& pointcloud)
+	void updateTrackRes(int kps_kp, int good_matches, int inliers)
 	{
-  		// triangulate using official
-		cv::Mat RT0(3,4,CV_64F);
-		R0.copyTo(RT0(cv::Rect(0, 0, 3, 3)));
-		T0.copyTo(RT0(cv::Rect(3, 0, 1, 3)));
-		cv::Mat RT1(3,4,CV_64F);
-		R1.copyTo(RT1(cv::Rect(0, 0, 3, 3)));
-		T1.copyTo(RT1(cv::Rect(3, 0, 1, 3)));
-		cv::Mat pc4dmat(4,pn0.size(),CV_64FC4);
-  		triangulatePoints(_Krgb*RT0, _Krgb*RT1, pn0, pn1, pc4dmat);
-		pointcloud.resize(pn0.size());
+		_trackres.reset();
+		_trackres._matchesnum = good_matches;
+		_trackres._inliersnum = inliers;
+		_trackres._score = _trackres._inliersnum / _trackres._matchesnum;
 
-  		for (int i = 0; i < pointcloud.size(); i++) {
-  			pointcloud[i].x = pc4dmat.at<double>(0,i) / pc4dmat.at<double>(3,i);
-  			pointcloud[i].y = pc4dmat.at<double>(1,i) / pc4dmat.at<double>(3,i);
-  			pointcloud[i].z = pc4dmat.at<double>(2,i) / pc4dmat.at<double>(3,i);
+		if (_trackres._matchesnum < 30 && _trackres._inliersnum < 10)
+		{
+			_trackres._iftrack = false;
+		}
 
-  			if (pointcloud[i].z < 0) {
-  				pointcloud[i].x *= -1.0;
-  				pointcloud[i].y *= -1.0;
-  				pointcloud[i].z *= -1.0;
-  			}
-  		}
+		if (_trackres._matchesnum < 60) {
+			_trackres._ifshift = true;
+		}
 
-  		RT0.release();
-  		RT1.release();
 	}
  
  	// customize PNP to overcome the bug in opencv on data type
-	void solvePNP(std::vector<Point3d> points, std::vector<Point2d> pixels, cv::Mat K, cv::Mat& r, cv::Mat& t, cv::Mat& inliers)
+	void solvePNPOld(std::vector<Point3d> points, std::vector<Point2d> pixels, cv::Mat K, cv::Mat& r, cv::Mat& t, cv::Mat& inliers)
 	{
 		vector<Point2f> pn;
 		vector<Point3f> pts;
@@ -499,34 +489,6 @@ public:
 		image_show.release();
 	}
 
-	// compute the reprojection a 3d point cloud to two 2d images 
-	std::vector<double> computeReProjectionError(const std::vector<cv::Point2d>& pn0, const std::vector<cv::Point2d>& pn1, 
-  							 const cv::Mat& K, const cv::Mat& r0, const cv::Mat& t0, const cv::Mat& r1, const cv::Mat& t1, 
-  		                     std::vector<cv::Point3d> pointcloud)
-	{
-		std::vector<double> res(pointcloud.size());
-
-		std::vector<cv::Point3f> pt;
-		for (int i = 0; i < pointcloud.size(); i++) {
-			pt.push_back(Point3f(float(pointcloud[i].x), float(pointcloud[i].y), float(pointcloud[i].z)));
-		}
-		cv::Mat distortionCoefficients;
-		std::vector<cv::Point2f> im0(pn0.size());
-		std::vector<cv::Point2f> im1(pn1.size());
-
-		cv::projectPoints(pt, r0, t0, K, distortionCoefficients, im0);
-		cv::projectPoints(pt, r1, t1, K, distortionCoefficients, im1);
-
-		//std::cout << "reprojection done" << std::endl;
-		for (int i = 0; i < pointcloud.size(); i++) {
-			res[i] = (  cv::norm(Point2f(im0[i].x-pn0[i].x, im0[i].y-pn0[i].y)) 
-				      + cv::norm(Point2f(im1[i].x-pn1[i].x, im1[i].y-pn1[i].y)) ) / 2;
-			//std::cout << pt[i] << "\t" << im0[i] << pn0[i] << "     \t" << im1[i] << pn1[i] << " " << res[i] << std::endl; 
-		}
-
-		return res;
-	}
-
 	cv::Point2d project3Dto2D(const cv::Point3d& ptd, const cv::Mat& K, const cv::Mat& rvec, const cv::Mat& tvec) 
 	{
 		std::vector<cv::Point3f> pt(1, Point3f((float)ptd.x, (float)ptd.y, (float)ptd.z));
@@ -537,35 +499,6 @@ public:
 		return res;
 	}
 
-	cv::Mat eulerAnglesToRotationMatrix(double x, double y, double z, cv::Mat& R)
-	{
-	    // Calculate rotation about x axis
-	    cv::Mat R_x = (Mat_<double>(3,3) <<
-	               1,       0,              0,
-	               0,       cos(x),   -sin(x),
-	               0,       sin(x),   cos(x)
-	               );
-	     
-	    // Calculate rotation about y axis
-	    cv::Mat R_y = (Mat_<double>(3,3) <<
-	               cos(y),    0,      sin(y),
-	               0,               1,      0,
-	               -sin(y),   0,      cos(y)
-	               );
-	     
-	    // Calculate rotation about z axis
-	    cv::Mat R_z = (Mat_<double>(3,3) <<
-	               cos(z),    -sin(z),      0,
-	               sin(z),    cos(z),       0,
-	               0,               0,                  1);
-		     
-		     
-	    // Combined rotation matrix
-	    cv::Mat Rm = R_z * R_y * R_x;
-	    Rm.copyTo(R);
-	    return R;
-		 
-	}
 };
 
 
